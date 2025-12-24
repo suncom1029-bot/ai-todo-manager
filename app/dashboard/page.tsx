@@ -68,7 +68,7 @@ const generateMockTodos = (): Todo[] => {
  * 메인 대시보드 페이지
  * @description 할 일 관리 메인 화면으로, 할 일 목록 표시, 추가, 수정, 삭제, 검색, 필터, 정렬 기능을 제공합니다.
  */
-export default function Home() {
+export default function DashboardPage() {
   const [todos, setTodos] = React.useState<Todo[]>(generateMockTodos());
   const [editingTodo, setEditingTodo] = React.useState<Todo | null>(null);
   const [filters, setFilters] = React.useState<FilterState>({
@@ -216,7 +216,7 @@ export default function Home() {
   const handleLogout = () => {
     // TODO: Supabase Auth 로그아웃
     console.log("로그아웃");
-    window.location.href = "/login";
+    window.location.href = "/";
   };
 
   const filteredTodos = getFilteredAndSortedTodos();
@@ -241,36 +241,27 @@ export default function Home() {
           {/* 할 일 추가/수정 폼 (좌측 또는 상단) */}
           <div className="lg:col-span-1">
             <div className="sticky top-24">
-              <div className="bg-card border rounded-lg p-6 shadow-sm">
-                <h3 className="text-lg font-semibold mb-4">
-                  {editingTodo ? "할 일 수정" : "새 할 일 추가"}
-                </h3>
-                <TodoForm
-                  initialData={editingTodo}
-                  onSubmit={editingTodo ? handleUpdateTodo : handleAddTodo}
-                  onCancel={() => setEditingTodo(null)}
-                  submitButtonText={editingTodo ? "수정" : "추가"}
-                />
-              </div>
+              <TodoForm
+                initialData={editingTodo}
+                onSubmit={editingTodo ? handleUpdateTodo : handleAddTodo}
+                onCancel={() => setEditingTodo(null)}
+                submitButtonText={editingTodo ? "수정" : "추가"}
+              />
             </div>
           </div>
 
           {/* 할 일 목록 (우측 또는 하단) */}
           <div className="lg:col-span-2">
-            <div className="bg-muted/30 border rounded-lg p-6 shadow-sm">
-              <h3 className="text-lg font-semibold mb-4">
-                할 일 목록 <span className="text-sm font-normal text-muted-foreground">({filteredTodos.length}개)</span>
-              </h3>
-              <TodoList
-                todos={filteredTodos}
-                onToggleComplete={handleToggleComplete}
-                onEdit={handleEditTodo}
-                onDelete={handleDeleteTodo}
-              />
-            </div>
+            <TodoList
+              todos={filteredTodos}
+              onToggleComplete={handleToggleComplete}
+              onEdit={handleEditTodo}
+              onDelete={handleDeleteTodo}
+            />
           </div>
         </div>
       </main>
     </div>
   );
 }
+

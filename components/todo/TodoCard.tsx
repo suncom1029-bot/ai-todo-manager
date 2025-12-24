@@ -78,21 +78,24 @@ const getDueDateBadgeVariant = (dueDate: string | null): 'default' | 'destructiv
 
 /**
  * 마감일 포맷팅
+ * @description 마감일을 "오늘/2025.12.25" 형식으로 표시합니다.
  */
 const formatDueDate = (dueDate: string | null): string => {
   if (!dueDate) return '마감일 없음';
   
   const date = new Date(dueDate);
+  const dateString = format(date, 'yyyy.MM.dd', { locale: ko });
+  
   if (isToday(date)) {
-    return '오늘';
+    return `오늘/${dateString}`;
   }
   if (isTomorrow(date)) {
-    return '내일';
+    return `내일/${dateString}`;
   }
   if (isPast(date)) {
-    return `지연: ${format(date, 'MM월 dd일', { locale: ko })}`;
+    return `지연/${dateString}`;
   }
-  return format(date, 'MM월 dd일', { locale: ko });
+  return dateString;
 };
 
 export const TodoCard = ({ 
