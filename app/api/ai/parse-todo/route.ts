@@ -155,10 +155,23 @@ export async function POST(request: NextRequest) {
     // API 키 정리 (공백, 줄바꿈, 특수문자 제거)
     // Google API 키는 영문자와 숫자만 포함해야 함
     if (apiKey) {
-      // 모든 공백, 줄바꿈, 탭 제거
+      // 1. 변수 이름이 포함되어 있는지 확인 및 제거 (Vercel 환경 변수 오류 대응)
+      // 예: "GOOGLE_GEMINI_API_KEY=AIza..." -> "AIza..."
+      if (apiKey.includes("=")) {
+        const parts = apiKey.split("=");
+        if (parts.length > 1) {
+          // "=" 뒤의 값만 사용
+          apiKey = parts.slice(1).join("=");
+          console.log("⚠️ 환경 변수 값에서 변수 이름 부분 제거됨");
+        }
+      }
+      
+      // 2. 모든 공백, 줄바꿈, 탭 제거
       apiKey = apiKey.trim().replace(/[\r\n\t\s]/g, '');
-      // 영문자, 숫자, 하이픈, 언더스코어만 남기고 나머지 제거
+      
+      // 3. 영문자, 숫자, 하이픈, 언더스코어만 남기고 나머지 제거
       apiKey = apiKey.replace(/[^a-zA-Z0-9_-]/g, '');
+      
       console.log("API 키 정리 후:", {
         length: apiKey.length,
         prefix: apiKey.substring(0, 10),

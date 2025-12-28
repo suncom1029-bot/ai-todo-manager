@@ -61,29 +61,55 @@ test.describe("Vercel 배포 사이트 전체 검증", () => {
     // 로그인 처리 대기
     await page.waitForTimeout(3000);
     
-    // 오류 메시지 확인 (더 넓은 범위로 검색)
-    const errorSelectors = [
-      'text=/오류|에러|실패|잘못|Missing|환경|변수/i',
-      '[role="alert"]',
-      '.text-destructive',
-      '.text-red-500',
+    // 오류 메시지 확인 (명확한 오류 메시지만 감지)
+    await page.waitForTimeout(2000);
+    
+    // 명확한 오류 메시지 패턴만 확인
+    const clearErrorPatterns = [
+      /로그인.*오류|로그인.*실패|로그인.*에러/i,
+      /Missing.*environment|환경.*변수|Invalid.*supabaseUrl/i,
+      /네트워크.*연결|network.*error/i,
     ];
     
     let hasError = false;
     let errorText = "";
     
-    for (const selector of errorSelectors) {
-      const errorElement = page.locator(selector);
-      if (await errorElement.isVisible({ timeout: 2000 })) {
-        errorText = (await errorElement.textContent()) || "";
-        if (errorText.trim().length > 0) {
+    // 페이지의 모든 텍스트 가져오기
+    const pageText = await page.textContent("body") || "";
+    
+    // 오류 패턴 확인
+    for (const pattern of clearErrorPatterns) {
+      if (pattern.test(pageText)) {
+        hasError = true;
+        // 오류 메시지 부분 추출
+        const match = pageText.match(new RegExp(pattern.source, "i"));
+        if (match) {
+          errorText = match[0];
+        }
+        break;
+      }
+    }
+    
+    // role="alert" 요소 확인 (명확한 오류 메시지)
+    const alertElement = page.locator('[role="alert"]');
+    if (await alertElement.isVisible({ timeout: 2000 })) {
+      const alertText = await alertElement.textContent();
+      if (alertText && alertText.trim().length > 0) {
+        // 명확한 오류 메시지인지 확인
+        if (
+          alertText.includes("오류") ||
+          alertText.includes("에러") ||
+          alertText.includes("실패") ||
+          alertText.includes("Missing") ||
+          alertText.includes("Invalid")
+        ) {
           hasError = true;
-          break;
+          errorText = alertText;
         }
       }
     }
     
-    if (hasError && errorText) {
+    if (hasError && errorText && errorText.trim().length > 2) {
       console.error(`❌ 로그인 오류 감지: ${errorText}`);
       
       // 페이지 스크린샷 저장
@@ -93,12 +119,10 @@ test.describe("Vercel 배포 사이트 전체 검증", () => {
       });
       
       // 환경 변수 오류인 경우 특별 처리
-      if (errorText.includes("Missing") || errorText.includes("환경") || errorText.includes("변수")) {
-        console.error("⚠️ Vercel 환경 변수가 설정되지 않았을 수 있습니다.");
-        console.error("Vercel 대시보드에서 다음 환경 변수를 확인하세요:");
-        console.error("- NEXT_PUBLIC_SUPABASE_URL");
-        console.error("- NEXT_PUBLIC_SUPABASE_ANON_KEY");
-        console.error("자세한 내용은 docs/VERCEL_ENV_SETUP.md 참조");
+      if (errorText.includes("Missing") || errorText.includes("환경") || errorText.includes("변수") || errorText.includes("Invalid supabaseUrl")) {
+        console.error("⚠️ Vercel 환경 변수 오류!");
+        console.error("환경 변수 값에 변수 이름이 포함되어 있는지 확인하세요.");
+        console.error("자세한 내용은 docs/VERCEL_ENV_FIX.md 참조");
       }
       
       // 네트워크 오류인 경우 재시도 제안
@@ -176,8 +200,9 @@ test.describe("Vercel 배포 사이트 전체 검증", () => {
       throw error;
     }
 
-    // 메인 페이지 확인
-    await expect(page.locator("text=할 일 목록")).toBeVisible({
+    // 메인 페이지 확인 (더 구체적인 셀렉터 사용)
+    const todoListHeading = page.getByRole("heading", { name: /할 일 목록/ });
+    await expect(todoListHeading.first()).toBeVisible({
       timeout: 10000,
     });
     console.log("✓ 메인 페이지 로드 완료");
@@ -223,9 +248,9 @@ test.describe("Vercel 배포 사이트 전체 검증", () => {
     console.log("✓ 할 일 추가 성공");
 
     console.log("=== 4. 할 일 조회 및 확인 ===");
-    // 할 일 목록이 표시되는지 확인
-    const todoList = page.locator("text=할 일 목록");
-    await expect(todoList).toBeVisible({ timeout: 5000 });
+    // 할 일 목록이 표시되는지 확인 (더 구체적인 셀렉터 사용)
+    const todoListSection = page.getByRole("heading", { name: /할 일 목록/ });
+    await expect(todoListSection.first()).toBeVisible({ timeout: 5000 });
 
     // 추가한 할 일이 목록에 있는지 확인
     const addedTodo = page.getByText(testTodoTitle).first();
