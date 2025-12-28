@@ -9,14 +9,34 @@ import type { Database } from "./types";
 export const createClient = async () => {
   const cookieStore = await cookies();
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey =
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const supabaseAnonKey = (
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  )?.trim();
 
-  if (!supabaseUrl || !supabaseAnonKey) {
+  // 환경 변수 존재 및 유효성 검증
+  if (!supabaseUrl || supabaseUrl.length === 0) {
+    console.error("NEXT_PUBLIC_SUPABASE_URL이 설정되지 않았습니다.");
     throw new Error(
-      "Missing Supabase environment variables. Please check your .env.local file."
+      "Supabase URL이 설정되지 않았습니다. 환경 변수를 확인해주세요."
+    );
+  }
+
+  if (!supabaseAnonKey || supabaseAnonKey.length === 0) {
+    console.error("NEXT_PUBLIC_SUPABASE_ANON_KEY가 설정되지 않았습니다.");
+    throw new Error(
+      "Supabase API 키가 설정되지 않았습니다. 환경 변수를 확인해주세요."
+    );
+  }
+
+  // URL 형식 검증
+  try {
+    new URL(supabaseUrl);
+  } catch {
+    console.error("잘못된 Supabase URL 형식:", supabaseUrl);
+    throw new Error(
+      `잘못된 Supabase URL 형식입니다: ${supabaseUrl.substring(0, 20)}...`
     );
   }
 
