@@ -2,10 +2,11 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Loader2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +18,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { createClient } from "@/lib/supabase/client";
 
 /**
  * 회원가입 폼 검증 스키마
@@ -51,10 +53,31 @@ interface SignupFormProps {
   redirectTo?: string;
 }
 
-export const SignupForm = ({ redirectTo = "/dashboard" }: SignupFormProps) => {
+export const SignupForm = ({ redirectTo = "/" }: SignupFormProps) => {
+  const router = useRouter();
   const [isLoading, setIsLoading] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
   const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
+
+  /**
+   * 로그인된 사용자 확인 및 리다이렉트
+   */
+  React.useEffect(() => {
+    const checkAuth = async () => {
+      const supabase = createClient();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (session) {
+        // 이미 로그인된 사용자는 메인 페이지로 리다이렉트
+        router.push("/");
+        router.refresh();
+      }
+    };
+
+    checkAuth();
+  }, [router]);
 
   const form = useForm<SignupFormSchema>({
     resolver: zodResolver(signupFormSchema),
@@ -66,8 +89,68 @@ export const SignupForm = ({ redirectTo = "/dashboard" }: SignupFormProps) => {
   });
 
   /**
+   * Supabase 에러 메시지를 사용자 친화적인 한글 메시지로 변환
+   */
+  const getErrorMessage = (error: Error | { message?: string; status?: number } | any): string => {
+    // 에러 메시지 안전하게 추출
+    const originalMessage = error?.message || error?.error_description || String(error) || "";
+    const errorMessage = originalMessage.toLowerCase();
+    const errorStatus = error?.status || error?.code || null;
+
+    // 개발 환경에서 원본 에러 메시지도 로그
+    if (process.env.NODE_ENV === "development") {
+      console.error("회원가입 에러 상세:", {
+        message: originalMessage,
+        status: errorStatus,
+        code: error?.code,
+        name: error?.name,
+        fullError: error,
+      });
+    }
+
+    // 이미 등록된 이메일
+    if (
+      errorMessage.includes("user already registered") ||
+      errorMessage.includes("already registered") ||
+      errorStatus === 422
+    ) {
+      return "이미 등록된 이메일입니다. 로그인을 시도해주세요.";
+    }
+
+    // 잘못된 이메일 형식
+    if (errorMessage.includes("invalid email") || errorMessage.includes("email format")) {
+      return "올바른 이메일 형식이 아닙니다.";
+    }
+
+    // 비밀번호 관련 오류
+    if (
+      errorMessage.includes("password") ||
+      errorMessage.includes("password too short") ||
+      errorStatus === 400
+    ) {
+      return "비밀번호는 최소 6자 이상이어야 합니다.";
+    }
+
+    // 이메일 전송 제한
+    if (errorMessage.includes("email rate limit") || errorStatus === 429) {
+      return "이메일 전송 횟수가 초과되었습니다. 잠시 후 다시 시도해주세요.";
+    }
+
+    // 네트워크 오류
+    if (errorMessage.includes("network") || errorMessage.includes("fetch")) {
+      return "네트워크 연결을 확인해주세요.";
+    }
+
+    // 원본 메시지가 명확한 경우 그대로 사용
+    if (originalMessage && originalMessage.length < 100 && !originalMessage.toLowerCase().includes("supabase")) {
+      return originalMessage;
+    }
+
+    return "회원가입 중 오류가 발생했습니다. 다시 시도해주세요.";
+  };
+
+  /**
    * 회원가입 폼 제출 처리
-   * TODO: Supabase Auth 연동 필요
    */
   const handleSubmit = async (data: SignupFormSchema) => {
     setIsLoading(true);
@@ -75,36 +158,127 @@ export const SignupForm = ({ redirectTo = "/dashboard" }: SignupFormProps) => {
     setSuccessMessage(null);
 
     try {
-      // TODO: Supabase Auth 회원가입 로직 구현
-      // const { data: authData, error } = await supabase.auth.signUp({
-      //   email: data.email,
-      //   password: data.password,
-      // });
-      
-      // if (error) {
-      //   setErrorMessage(error.message);
-      //   return;
-      // }
-      
-      // 회원가입 성공 시 메인 페이지로 리다이렉트
-      // router.push(redirectTo);
-      
-      // 임시: 개발 중이므로 콘솔에 출력
-      console.log("회원가입 시도:", { email: data.email });
-      
-      // 임시 지연 (실제 API 호출 시뮬레이션)
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      
-      setSuccessMessage("회원가입이 완료되었습니다! 로그인 페이지로 이동합니다.");
-      
-      // 성공 메시지 표시 후 로그인 페이지로 리다이렉트
-      setTimeout(() => {
-        window.location.href = "/";
-      }, 2000);
+      const supabase = createClient();
+
+      // Supabase Auth 회원가입
+      const { data: authData, error } = await supabase.auth.signUp({
+        email: data.email.trim(),
+        password: data.password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          data: {
+            email_verified: true,
+          },
+        },
+      });
+
+      // 개발 환경에서 상세 로그
+      if (process.env.NODE_ENV === "development") {
+        console.log("회원가입 응답:", {
+          hasUser: !!authData?.user,
+          hasSession: !!authData?.session,
+          error: error
+            ? {
+                message: error.message,
+                status: error.status,
+                name: error.name,
+                code: error.code,
+              }
+            : null,
+        });
+      }
+
+      if (error) {
+        // 에러를 안전하게 처리
+        const errorObj = error instanceof Error
+          ? error
+          : {
+              message: error.message || error.error_description || "알 수 없는 오류",
+              status: error.status || error.code,
+              ...error,
+            };
+        setErrorMessage(getErrorMessage(errorObj));
+        setIsLoading(false);
+        return;
+      }
+
+      // 회원가입 성공 처리
+      if (authData.user) {
+        // public.users 테이블에 사용자 프로필 생성 (트리거가 작동하지 않는 경우 대비)
+        try {
+          const { error: profileError } = await supabase
+            .from("users")
+            .insert({
+              id: authData.user.id,
+              email: authData.user.email || data.email,
+              created_at: new Date().toISOString(),
+            })
+            .select()
+            .single();
+
+          // 이미 존재하는 경우는 무시 (트리거가 이미 생성했을 수 있음)
+          if (profileError && !profileError.message.includes("duplicate")) {
+            console.warn("사용자 프로필 생성 오류 (무시 가능):", profileError);
+          }
+        } catch (profileError) {
+          // 프로필 생성 실패는 무시 (트리거가 처리했을 수 있음)
+          console.warn("사용자 프로필 생성 중 오류 (무시 가능):", profileError);
+        }
+
+        // 이메일 확인이 필요한 경우 (세션이 없는 경우)
+        if (authData.user.email && !authData.session) {
+          // 이메일 인증이 필요한 경우, 자동으로 로그인 시도
+          // 주의: Supabase 대시보드에서 "Enable email confirmations"를 비활성화해야 함
+          try {
+            // 회원가입 직후 로그인 시도 (이메일 인증 우회)
+            const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
+              email: data.email,
+              password: data.password,
+            });
+
+            if (loginError) {
+              // 로그인 실패 시 이메일 인증 필요 메시지 표시
+              setSuccessMessage(
+                "회원가입이 완료되었습니다! 이메일을 확인하여 계정을 활성화해주세요. 확인 링크가 전송되었습니다."
+              );
+              
+              // 3초 후 로그인 페이지로 리다이렉트
+              setTimeout(() => {
+                router.push("/login");
+              }, 3000);
+            } else if (loginData.session) {
+              // 로그인 성공 시 메인 페이지로 리다이렉트
+              setSuccessMessage("회원가입이 완료되었습니다!");
+              router.push(redirectTo);
+              router.refresh();
+            }
+          } catch (loginErr) {
+            // 로그인 시도 실패 시 이메일 인증 필요 메시지 표시
+            setSuccessMessage(
+              "회원가입이 완료되었습니다! 이메일을 확인하여 계정을 활성화해주세요. 확인 링크가 전송되었습니다."
+            );
+            
+            setTimeout(() => {
+              router.push("/login");
+            }, 3000);
+          }
+        } else if (authData.session) {
+          // 즉시 로그인된 경우 (이메일 확인 불필요)
+          setSuccessMessage("회원가입이 완료되었습니다!");
+          
+          // 메인 페이지로 리다이렉트
+          setTimeout(() => {
+            router.push(redirectTo);
+            router.refresh();
+          }, 1000);
+        }
+      }
     } catch (error) {
-      setErrorMessage(
-        error instanceof Error ? error.message : "회원가입 중 오류가 발생했습니다."
-      );
+      console.error("회원가입 예외:", error);
+      const errorObj = error instanceof Error
+        ? error
+        : { message: String(error) || "알 수 없는 오류" };
+      setErrorMessage(getErrorMessage(errorObj));
     } finally {
       setIsLoading(false);
     }
@@ -225,7 +399,14 @@ export const SignupForm = ({ redirectTo = "/dashboard" }: SignupFormProps) => {
                   className="w-full"
                   disabled={isLoading}
                 >
-                  {isLoading ? "가입 중..." : "회원가입"}
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 size-4 animate-spin" />
+                      가입 중...
+                    </>
+                  ) : (
+                    "회원가입"
+                  )}
                 </Button>
               </form>
             </Form>
@@ -234,7 +415,7 @@ export const SignupForm = ({ redirectTo = "/dashboard" }: SignupFormProps) => {
             <div className="mt-6 text-center text-sm">
               <span className="text-muted-foreground">이미 계정이 있으신가요? </span>
               <Link
-                href="/"
+                href="/login"
                 className="text-primary hover:underline font-medium"
               >
                 로그인

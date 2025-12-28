@@ -224,7 +224,7 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen flex flex-col">
       {/* 헤더 */}
-      <Header userEmail="user@example.com" onLogout={handleLogout} />
+      <Header />
 
       {/* 메인 컨텐츠 */}
       <main className="flex-1 container mx-auto px-4 py-6 space-y-6">

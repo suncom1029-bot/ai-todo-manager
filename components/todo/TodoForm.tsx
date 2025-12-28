@@ -4,8 +4,8 @@ import * as React from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { format } from "date-fns";
-import { CalendarIcon } from "lucide-react";
+import { format, parseISO } from "date-fns";
+import { CalendarIcon, Sparkles, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -65,6 +65,9 @@ export const TodoForm = ({
   const [selectedDate, setSelectedDate] = React.useState<Date | undefined>(
     initialData?.due_date ? new Date(initialData.due_date) : undefined
   );
+  const [naturalLanguageInput, setNaturalLanguageInput] = React.useState("");
+  const [isParsingAI, setIsParsingAI] = React.useState(false);
+  const [aiError, setAiError] = React.useState<string | null>(null);
 
   const {
     register,
@@ -115,8 +118,133 @@ export const TodoForm = ({
     }
   };
 
+  /**
+   * AI 자연어 파싱 핸들러
+   * @description 자연어 입력을 AI로 파싱하여 폼에 자동으로 채웁니다.
+   */
+  const handleAIParse = async () => {
+    if (!naturalLanguageInput.trim()) {
+      setAiError("자연어 입력을 입력해주세요.");
+      return;
+    }
+
+    setIsParsingAI(true);
+    setAiError(null);
+
+    try {
+      const response = await fetch("/api/ai/parse-todo", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          naturalLanguageInput: naturalLanguageInput.trim(),
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "알 수 없는 오류" }));
+        throw new Error(errorData.error || "AI 파싱에 실패했습니다.");
+      }
+
+      const parsedData = await response.json();
+
+      // 파싱된 데이터를 폼에 채우기
+      setValue("title", parsedData.title, { shouldValidate: true });
+      setValue("description", parsedData.description || "", { shouldValidate: true });
+      setValue("priority", parsedData.priority, { shouldValidate: true });
+      setValue("category", parsedData.category, { shouldValidate: true });
+
+      // 날짜와 시간 처리
+      if (parsedData.due_date) {
+        const dateObj = parseISO(parsedData.due_date);
+        setSelectedDate(dateObj);
+        setValue("due_date", parsedData.due_date, { shouldValidate: true });
+      } else {
+        setSelectedDate(undefined);
+        setValue("due_date", "", { shouldValidate: true });
+      }
+
+      // 자연어 입력 필드 초기화
+      setNaturalLanguageInput("");
+    } catch (error) {
+      console.error("AI 파싱 오류:", error);
+      setAiError(
+        error instanceof Error
+          ? error.message
+          : "AI 파싱 중 오류가 발생했습니다. 다시 시도해주세요."
+      );
+    } finally {
+      setIsParsingAI(false);
+    }
+  };
+
   return (
     <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
+      {/* AI 자연어 입력 영역 */}
+      <div className="space-y-2 rounded-lg border bg-muted/30 p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <Sparkles className="size-4 text-primary" />
+          <Label htmlFor="natural-language" className="text-sm font-medium">
+            AI로 할 일 생성
+          </Label>
+        </div>
+        <div className="space-y-2">
+          <Textarea
+            id="natural-language"
+            placeholder="예: 내일 오후 3시까지 중요한 팀 회의 준비하기"
+            value={naturalLanguageInput}
+            onChange={(e) => {
+              setNaturalLanguageInput(e.target.value);
+              setAiError(null);
+            }}
+            disabled={isLoading || isParsingAI}
+            rows={3}
+            className="resize-none"
+          />
+          <div className="flex items-center justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleAIParse}
+              disabled={isLoading || isParsingAI || !naturalLanguageInput.trim()}
+              className="flex items-center gap-2"
+            >
+              {isParsingAI ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  AI 분석 중...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="size-4" />
+                  AI로 변환
+                </>
+              )}
+            </Button>
+            {aiError && (
+              <p className="text-xs text-destructive" role="alert">
+                {aiError}
+              </p>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            자연어로 할 일을 입력하면 AI가 제목, 날짜, 우선순위, 카테고리를 자동으로 추출합니다.
+          </p>
+        </div>
+      </div>
+
+      {/* 구분선 */}
+      <div className="relative">
+        <div className="absolute inset-0 flex items-center">
+          <span className="w-full border-t" />
+        </div>
+        <div className="relative flex justify-center text-xs uppercase">
+          <span className="bg-background px-2 text-muted-foreground">또는 직접 입력</span>
+        </div>
+      </div>
+
       {/* 제목 입력 */}
       <div className="space-y-2">
         <Label htmlFor="title">

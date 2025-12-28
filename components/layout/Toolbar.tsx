@@ -26,7 +26,7 @@ export interface FilterState {
   /** 카테고리 필터 */
   category: "all" | TodoCategory;
   /** 정렬 기준 */
-  sortBy: "priority" | "dueDate" | "createdAt";
+  sortBy: "priority" | "dueDate" | "createdAt" | "title";
   /** 정렬 방향 */
   sortOrder: "asc" | "desc";
 }
@@ -166,6 +166,7 @@ export const Toolbar = ({ filters, onFilterChange }: ToolbarProps) => {
             <SelectItem value="priority">우선순위</SelectItem>
             <SelectItem value="dueDate">마감일</SelectItem>
             <SelectItem value="createdAt">생성일</SelectItem>
+            <SelectItem value="title">제목</SelectItem>
           </SelectContent>
         </Select>
 

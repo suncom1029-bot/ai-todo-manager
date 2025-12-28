@@ -2,35 +2,40 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { CheckCircle2, LogOut } from "lucide-react";
+import { CheckCircle2, LogOut, Loader2, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { useAuth } from "@/hooks/use-auth";
+import { useTheme } from "next-themes";
 
 /**
  * 헤더 컴포넌트
  * @description 상단 헤더로 서비스 로고, 사용자 정보, 로그아웃 버튼을 표시합니다.
  */
-interface HeaderProps {
-  /** 현재 로그인한 사용자 이메일 */
-  userEmail?: string;
-  /** 로그아웃 핸들러 */
-  onLogout?: () => void;
-}
+export const Header = () => {
+  const { user, isLoading, signOut } = useAuth();
+  const [isLoggingOut, setIsLoggingOut] = React.useState(false);
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = React.useState(false);
 
-export const Header = ({ userEmail = "user@example.com", onLogout }: HeaderProps) => {
+  // 다크모드 토글을 위한 마운트 확인 (hydration 오류 방지)
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
   /**
    * 로그아웃 처리
-   * TODO: Supabase Auth 로그아웃 로직 구현 필요
    */
-  const handleLogout = () => {
-    if (onLogout) {
-      onLogout();
-    } else {
-      // TODO: Supabase Auth 로그아웃
-      // await supabase.auth.signOut();
-      // router.push('/');
-      console.log("로그아웃");
-      alert("로그아웃 기능은 Supabase Auth 연동 후 구현됩니다.");
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+
+    try {
+      await signOut();
+    } catch (error) {
+      console.error("로그아웃 오류:", error);
+      alert("로그아웃 중 오류가 발생했습니다. 다시 시도해주세요.");
+    } finally {
+      setIsLoggingOut(false);
     }
   };
 
@@ -45,6 +50,13 @@ export const Header = ({ userEmail = "user@example.com", onLogout }: HeaderProps
     return "U";
   };
 
+  // 로딩 중이거나 사용자가 없으면 헤더를 표시하지 않음
+  if (isLoading || !user) {
+    return null;
+  }
+
+  const userEmail = user.email || "";
+
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 items-center px-4">
@@ -58,6 +70,23 @@ export const Header = ({ userEmail = "user@example.com", onLogout }: HeaderProps
 
         {/* 사용자 정보 및 로그아웃 - 오른쪽 정렬 */}
         <div className="flex items-center gap-3 ml-auto">
+          {/* 다크모드 토글 버튼 */}
+          {mounted && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              className="size-8"
+              title={theme === "dark" ? "라이트 모드로 전환" : "다크 모드로 전환"}
+            >
+              {theme === "dark" ? (
+                <Sun className="size-4" />
+              ) : (
+                <Moon className="size-4" />
+              )}
+            </Button>
+          )}
+          
           {/* 사용자 아이콘 */}
           <Avatar className="size-8">
             <AvatarFallback className="bg-primary text-primary-foreground">
@@ -77,10 +106,15 @@ export const Header = ({ userEmail = "user@example.com", onLogout }: HeaderProps
               variant="ghost"
               size="icon"
               onClick={handleLogout}
+              disabled={isLoggingOut}
               className="size-8"
               title="로그아웃"
             >
-              <LogOut className="size-4" />
+              {isLoggingOut ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <LogOut className="size-4" />
+              )}
             </Button>
           </div>
         </div>
