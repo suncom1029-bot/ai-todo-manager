@@ -30,10 +30,28 @@ export async function POST(request: NextRequest) {
     
     // API 키 정리
     if (apiKey) {
-      apiKey = apiKey.trim().replace(/[\r\n\t\s]/g, '').replace(/[^a-zA-Z0-9_-]/g, '');
+      // 1. 변수 이름이 포함되어 있는지 확인 및 제거 (Vercel 환경 변수 오류 대응)
+      if (apiKey.includes("=")) {
+        const parts = apiKey.split("=");
+        if (parts.length > 1) {
+          apiKey = parts.slice(1).join("=");
+          console.log("⚠️ 환경 변수 값에서 변수 이름 부분 제거됨");
+        }
+      }
+      
+      // 2. 모든 공백, 줄바꿈, 탭 제거
+      apiKey = apiKey.trim().replace(/[\r\n\t\s]/g, '');
+      
+      // 3. 영문자, 숫자, 하이픈, 언더스코어만 남기고 나머지 제거
+      apiKey = apiKey.replace(/[^a-zA-Z0-9_-]/g, '');
     }
     
     if (!apiKey || !apiKey.startsWith("AIza")) {
+      console.error("API 키 검증 실패:", {
+        hasApiKey: !!apiKey,
+        apiKeyLength: apiKey?.length || 0,
+        apiKeyPrefix: apiKey?.substring(0, 10) || "없음",
+      });
       return NextResponse.json(
         { error: "API 키가 설정되지 않았거나 올바르지 않습니다." },
         { status: 500 }
