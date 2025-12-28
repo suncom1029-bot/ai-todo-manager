@@ -25,43 +25,82 @@ test.describe("Vercel 배포 사이트 전체 검증", () => {
     console.log("✓ 로그인 페이지 로드 완료");
 
     console.log("=== 2. 로그인 ===");
-    await page.fill('input[type="email"]', email);
-    await page.fill('input[type="password"]', password);
     
-    // 로그인 버튼 클릭 전에 폼이 준비되었는지 확인
+    // 이메일 입력 필드 확인
+    const emailInput = page.locator('input[type="email"]');
+    await expect(emailInput).toBeVisible({ timeout: 10000 });
+    await emailInput.fill(email);
+    
+    // 비밀번호 입력 필드 확인
+    const passwordInput = page.locator('input[type="password"]');
+    await expect(passwordInput).toBeVisible({ timeout: 5000 });
+    await passwordInput.fill(password);
+    
+    // 로그인 버튼 클릭
     const submitButton = page.locator('button[type="submit"]');
     await expect(submitButton).toBeEnabled({ timeout: 5000 });
-    
     await submitButton.click();
     
-    // 오류 메시지 확인
-    await page.waitForTimeout(2000);
-    
-    // 오류 메시지가 있는지 확인
+    // 로그인 처리 대기
     await page.waitForTimeout(3000);
-    const errorMessage = page.locator('text=/오류|에러|실패|잘못|Missing|환경/i');
-    if (await errorMessage.isVisible({ timeout: 5000 })) {
-      const errorText = await errorMessage.textContent();
-      console.error(`❌ 로그인 오류: ${errorText}`);
+    
+    // 오류 메시지 확인 (더 넓은 범위로 검색)
+    const errorSelectors = [
+      'text=/오류|에러|실패|잘못|Missing|환경|변수/i',
+      '[role="alert"]',
+      '.text-destructive',
+      '.text-red-500',
+    ];
+    
+    let hasError = false;
+    let errorText = "";
+    
+    for (const selector of errorSelectors) {
+      const errorElement = page.locator(selector);
+      if (await errorElement.isVisible({ timeout: 2000 })) {
+        errorText = (await errorElement.textContent()) || "";
+        if (errorText.trim().length > 0) {
+          hasError = true;
+          break;
+        }
+      }
+    }
+    
+    if (hasError && errorText) {
+      console.error(`❌ 로그인 오류 감지: ${errorText}`);
       
       // 페이지 스크린샷 저장
-      await page.screenshot({ path: "test-results/login-error.png", fullPage: true });
+      await page.screenshot({ 
+        path: "test-results/login-error.png", 
+        fullPage: true 
+      });
       
       // 환경 변수 오류인 경우 특별 처리
-      if (errorText?.includes("Missing") || errorText?.includes("환경")) {
+      if (errorText.includes("Missing") || errorText.includes("환경") || errorText.includes("변수")) {
         console.error("⚠️ Vercel 환경 변수가 설정되지 않았을 수 있습니다.");
         console.error("Vercel 대시보드에서 다음 환경 변수를 확인하세요:");
         console.error("- NEXT_PUBLIC_SUPABASE_URL");
         console.error("- NEXT_PUBLIC_SUPABASE_ANON_KEY");
+        console.error("자세한 내용은 docs/VERCEL_ENV_SETUP.md 참조");
+      }
+      
+      // 네트워크 오류인 경우 재시도 제안
+      if (errorText.includes("네트워크") || errorText.includes("network")) {
+        console.error("⚠️ 네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
       }
       
       throw new Error(`로그인 실패: ${errorText}`);
     }
 
-    // 로그인 후 메인 페이지로 이동 대기 (더 긴 타임아웃)
+    // 로그인 후 메인 페이지로 이동 대기
     try {
-      await page.waitForURL(`${baseURL}/`, { timeout: 20000 });
-      await page.waitForLoadState("networkidle");
+      // URL 변경 또는 특정 요소가 나타날 때까지 대기
+      await Promise.race([
+        page.waitForURL(`${baseURL}/`, { timeout: 20000 }),
+        page.waitForSelector("text=할 일 목록", { timeout: 20000 }),
+      ]);
+      
+      await page.waitForLoadState("networkidle", { timeout: 10000 });
       console.log("✓ 로그인 성공");
     } catch (error) {
       // 현재 URL 확인
@@ -71,6 +110,12 @@ test.describe("Vercel 배포 사이트 전체 검증", () => {
       // 페이지 내용 확인
       const pageContent = await page.textContent("body");
       console.log(`페이지 내용 일부: ${pageContent?.substring(0, 500)}`);
+      
+      // 스크린샷 저장
+      await page.screenshot({ 
+        path: "test-results/login-redirect-failed.png", 
+        fullPage: true 
+      });
       
       throw error;
     }
