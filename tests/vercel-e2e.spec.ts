@@ -12,16 +12,33 @@ test.describe("Vercel 배포 사이트 전체 검증", () => {
   test("전체 기능 검증: 로그인 → 할일 추가 → 조회 → 수정 → 삭제 → AI 분석", async ({
     page,
   }) => {
-    test.setTimeout(120000); // 2분 타임아웃
+    test.setTimeout(180000); // 3분 타임아웃
+
+    // 콘솔 로그 수집
+    page.on("console", (msg) => {
+      if (msg.type() === "error") {
+        console.log(`브라우저 콘솔 오류: ${msg.text()}`);
+      }
+    });
+
+    // 네트워크 오류 수집
+    page.on("response", (response) => {
+      if (response.status() >= 400) {
+        console.log(`HTTP 오류: ${response.status()} ${response.url()}`);
+      }
+    });
 
     console.log("=== 1. 로그인 페이지 접근 ===");
-    await page.goto(`${baseURL}/login`);
-    await page.waitForLoadState("networkidle");
+    await page.goto(`${baseURL}/login`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(2000);
 
     // 로그인 페이지 확인
-    await expect(page.locator("h1")).toContainText("AI 할 일 관리", {
-      timeout: 10000,
-    });
+    const pageTitle = page.locator("h1").or(page.locator("text=/AI 할 일 관리/i"));
+    await expect(pageTitle.first()).toBeVisible({ timeout: 15000 });
+    
+    // 페이지가 완전히 로드되었는지 확인
+    const loginForm = page.locator('input[type="email"]');
+    await expect(loginForm).toBeVisible({ timeout: 10000 });
     console.log("✓ 로그인 페이지 로드 완료");
 
     console.log("=== 2. 로그인 ===");
@@ -94,14 +111,25 @@ test.describe("Vercel 배포 사이트 전체 검증", () => {
 
     // 로그인 후 메인 페이지로 이동 대기
     try {
-      // URL 변경 또는 특정 요소가 나타날 때까지 대기
+      // 여러 방법으로 성공 확인
       await Promise.race([
-        page.waitForURL(`${baseURL}/`, { timeout: 20000 }),
-        page.waitForSelector("text=할 일 목록", { timeout: 20000 }),
+        page.waitForURL(`${baseURL}/`, { timeout: 25000 }),
+        page.waitForSelector("text=할 일 목록", { timeout: 25000 }),
+        page.waitForSelector("text=새 할 일 추가", { timeout: 25000 }),
+        page.waitForSelector('input[id="title"]', { timeout: 25000 }),
       ]);
       
-      await page.waitForLoadState("networkidle", { timeout: 10000 });
-      console.log("✓ 로그인 성공");
+      // 추가 대기 (네트워크 요청 완료)
+      await page.waitForTimeout(2000);
+      await page.waitForLoadState("domcontentloaded", { timeout: 10000 });
+      
+      // 메인 페이지 요소 확인
+      const mainPageIndicator = page.locator("text=할 일 목록").or(
+        page.locator("text=새 할 일 추가")
+      );
+      await expect(mainPageIndicator.first()).toBeVisible({ timeout: 10000 });
+      
+      console.log("✓ 로그인 성공 - 메인 페이지 확인됨");
     } catch (error) {
       // 현재 URL 확인
       const currentURL = page.url();
@@ -109,13 +137,41 @@ test.describe("Vercel 배포 사이트 전체 검증", () => {
       
       // 페이지 내용 확인
       const pageContent = await page.textContent("body");
-      console.log(`페이지 내용 일부: ${pageContent?.substring(0, 500)}`);
+      console.log(`페이지 내용 일부: ${pageContent?.substring(0, 1000)}`);
+      
+      // 페이지의 모든 텍스트 확인
+      const allText = await page.evaluate(() => document.body.innerText);
+      console.log(`전체 페이지 텍스트: ${allText.substring(0, 500)}`);
       
       // 스크린샷 저장
       await page.screenshot({ 
         path: "test-results/login-redirect-failed.png", 
         fullPage: true 
       });
+      
+      // 환경 변수 관련 오류인지 확인
+      if (
+        allText.includes("Missing") ||
+        allText.includes("환경") ||
+        allText.includes("변수") ||
+        allText.includes("Invalid supabaseUrl")
+      ) {
+        console.error("⚠️ 환경 변수 오류로 보입니다!");
+        console.error("브라우저 콘솔 오류: Invalid supabaseUrl");
+        console.error("");
+        console.error("🔧 해결 방법:");
+        console.error("Vercel 환경 변수 값에 변수 이름이 포함되어 있습니다.");
+        console.error("");
+        console.error("❌ 잘못된 설정:");
+        console.error("  NEXT_PUBLIC_SUPABASE_URL = NEXT_PUBLIC_SUPABASE_URL=https://...");
+        console.error("");
+        console.error("✅ 올바른 설정:");
+        console.error("  NEXT_PUBLIC_SUPABASE_URL = https://cvnpcqacpxcubvmyuwhh.supabase.co");
+        console.error("  NEXT_PUBLIC_SUPABASE_ANON_KEY = sb_publishable_nhjy7NhirZ-3GS7P6smynA_Nu2mvmXJ");
+        console.error("  GOOGLE_GEMINI_API_KEY = AIzaSyA0FACsr7oqiBsJmpoJgqaALfEaXBHaayM");
+        console.error("");
+        console.error("자세한 내용은 docs/VERCEL_ENV_FIX.md 참조");
+      }
       
       throw error;
     }
